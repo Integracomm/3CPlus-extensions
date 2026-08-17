@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Extensao Chrome de click-to-call sobre o SDK 3C Plus",
   "scripts": {
+    "test": "node test/ciclo-chamada.mjs",
     "build": "node build.mjs",
     "zip": "node build.mjs && powershell -Command \"Compress-Archive -Path manifest.json,src,vendor -DestinationPath 3cplus-extension.zip -Force\""
   },

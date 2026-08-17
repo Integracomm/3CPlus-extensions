@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Disca numeros de telefone direto da tela do seu CRM usando a plataforma 3C Plus.",
 
-  "permissions": ["storage", "offscreen", "sidePanel", "contextMenus"],
+  "permissions": ["storage", "offscreen", "contextMenus", "sidePanel"],
   "host_permissions": ["https://*.3c.plus/*"],
 
   "background": {
@@ -13,11 +13,11 @@
   },
 
   "side_panel": {
-    "default_path": "src/sidepanel/panel.html"
+    "default_path": "src/panel/panel.html"
   },
 
   "action": {
-    "default_title": "3C Plus - abrir painel do operador"
+    "default_title": "3C Plus - abrir o painel do operador"
   },
 
   "content_scripts": [

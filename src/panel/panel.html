@@ -5,148 +5,337 @@
     <title>3C Plus</title>
     <style>
       :root {
-        --azul: #294ace;
-        --amarelo: #ffbb3a;
-        --fundo: #f9fafc;
-        --texto: #373753;
-        --borda: #e3e6ef;
+        --azul: #2b4bd8;
+        --azul-esc: #1d38ad;
+        --azul-fraco: #eef1fe;
+        --verde: #0f9d58;
+        --verde-fraco: #e7f6ee;
+        --ambar: #e08600;
+        --ambar-fraco: #fef4e3;
+        --vermelho: #d92d20;
+        --vermelho-fraco: #fdecea;
+        --fundo: #f3f4f8;
+        --card: #ffffff;
+        --texto: #1c2033;
+        --suave: #6a7089;
+        --borda: #e3e6f0;
+        --raio: 10px;
       }
+
       * { box-sizing: border-box; }
+      html, body { height: 100%; }
       body {
         margin: 0;
-        font: 14px/1.5 system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
         color: var(--texto);
         background: var(--fundo);
       }
+
+      /* ---------- cabecalho ---------- */
       header {
         background: var(--azul);
         color: #fff;
         padding: 12px 14px;
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
+        flex: none;
       }
-      header b { font-size: 14px; }
-      header small { opacity: 0.85; display: block; font-size: 11px; }
-      main { padding: 14px; }
+      .avatar {
+        width: 34px; height: 34px; flex: none;
+        border-radius: 50%;
+        background: rgb(255 255 255 / 18%);
+        display: grid; place-items: center;
+        font-weight: 700; font-size: 13px;
+      }
+      .quem { min-width: 0; flex: 1; }
+      .quem b { display: block; font-size: 13px; }
+      .quem small {
+        display: block; font-size: 11px; opacity: 0.82;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .icone {
+        flex: none;
+        background: rgb(255 255 255 / 14%);
+        border: 0; border-radius: 7px;
+        color: #fff; cursor: pointer;
+        padding: 6px 10px; font: 600 11px system-ui;
+      }
+      .icone:hover { background: rgb(255 255 255 / 26%); }
+
+      /* ---------- conexao ---------- */
+      /* O side panel e estreito e o usuario redimensiona: os chips quebram. */
+      .conexao {
+        display: flex; gap: 6px; flex: none; flex-wrap: wrap;
+        padding: 7px 14px;
+        background: #fff;
+        border-bottom: 1px solid var(--borda);
+      }
+      .chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: 10.5px; font-weight: 600;
+        color: var(--suave);
+        background: var(--fundo);
+        border-radius: 20px;
+        padding: 3px 9px 3px 7px;
+      }
+      .chip::before {
+        content: ""; width: 6px; height: 6px; border-radius: 50%;
+        background: #c7ccd9;
+      }
+      .chip.ok { color: var(--verde); background: var(--verde-fraco); }
+      .chip.ok::before { background: var(--verde); }
+      .chip.ruim { color: var(--vermelho); background: var(--vermelho-fraco); }
+      .chip.ruim::before { background: var(--vermelho); }
+      .chip.alerta { color: var(--ambar); background: var(--ambar-fraco); }
+      .chip.alerta::before { background: var(--ambar); }
+
+      /* ---------- aviso de microfone ---------- */
+      #aviso-mic {
+        flex: none;
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 14px;
+        background: var(--ambar-fraco);
+        border-bottom: 1px solid #f3e0bc;
+        color: #7a4b00;
+        font-size: 11.5px; font-weight: 600;
+      }
+      #aviso-mic span { flex: 1; }
+      #aviso-mic button {
+        flex: none; padding: 5px 11px; font-size: 11px;
+        background: var(--ambar);
+      }
+      #aviso-mic button:hover:not(:disabled) { background: #c07400; }
+
+      /* ---------- aviso ---------- */
+      #notice { padding: 9px 14px; font-size: 12px; display: none; flex: none; }
+      #notice.error { background: var(--vermelho-fraco); color: #96150c; display: block; }
+      #notice.info { background: var(--azul-fraco); color: var(--azul-esc); display: block; }
+
+      /* ---------- corpo ---------- */
+      main { flex: 1; overflow-y: auto; padding: 12px; }
       section { display: none; }
       section.on { display: block; }
 
-      label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 4px; }
-      input, select {
-        width: 100%;
-        padding: 8px 10px;
-        border: 1px solid var(--borda);
-        border-radius: 6px;
-        font: inherit;
-      }
-      button {
-        font: 600 13px system-ui;
-        border: 0;
-        border-radius: 6px;
-        padding: 9px 14px;
-        cursor: pointer;
-        background: var(--azul);
-        color: #fff;
-      }
-      button:disabled { background: #a8adc4; cursor: default; }
-      button.ghost { background: transparent; color: var(--azul); border: 1px solid var(--borda); }
-      button.danger { background: #d33; }
-      button.wide { width: 100%; margin-top: 12px; }
-
       .card {
-        background: #fff;
+        background: var(--card);
         border: 1px solid var(--borda);
-        border-radius: 8px;
+        border-radius: var(--raio);
         padding: 12px;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
+      }
+      .card > h2 {
+        margin: 0 0 9px;
+        font-size: 11px; font-weight: 700;
+        letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--suave);
       }
       .row { display: flex; gap: 8px; align-items: center; }
-      .muted { color: #7a7f9a; font-size: 12px; }
-      .status { display: flex; gap: 10px; font-size: 11px; margin-top: 6px; }
-      .dot::before { content: "\25CF"; color: #c33; margin-right: 4px; }
-      .dot.ok::before { color: #1a8f4a; }
+      .entre { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .muted { color: var(--suave); font-size: 11.5px; }
+
+      label { display: block; font-size: 11.5px; font-weight: 600; margin: 12px 0 4px; }
+      label:first-of-type { margin-top: 0; }
+      input, select {
+        width: 100%;
+        padding: 9px 11px;
+        border: 1px solid var(--borda);
+        border-radius: 8px;
+        font: inherit;
+        background: #fff;
+        color: inherit;
+      }
+      input:focus, select:focus {
+        outline: 0;
+        border-color: var(--azul);
+        box-shadow: 0 0 0 3px rgb(43 75 216 / 12%);
+      }
+
+      button {
+        font: 600 12.5px system-ui;
+        border: 0; border-radius: 8px;
+        padding: 9px 14px;
+        cursor: pointer;
+        background: var(--azul); color: #fff;
+        white-space: nowrap;
+      }
+      button:hover:not(:disabled) { background: var(--azul-esc); }
+      button:disabled { background: #b3b8cc; cursor: default; }
+      button.ghost {
+        background: #fff; color: var(--azul);
+        border: 1px solid var(--borda);
+      }
+      button.ghost:hover:not(:disabled) { background: var(--azul-fraco); }
+      button.danger { background: var(--vermelho); }
+      button.danger:hover:not(:disabled) { background: #a81d13; }
+      button.wide { width: 100%; margin-top: 10px; }
 
       .item {
-        padding: 9px 10px;
+        padding: 10px 11px;
         border: 1px solid var(--borda);
-        border-radius: 6px;
+        border-radius: 8px;
         background: #fff;
         margin-bottom: 6px;
         cursor: pointer;
+        font-weight: 500;
       }
-      .item:hover { border-color: var(--azul); }
+      .item:hover { border-color: var(--azul); background: var(--azul-fraco); }
 
-      .qual { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-      .qual button { background: #fff; color: var(--texto); border: 1px solid var(--borda); font-weight: 500; }
-      .qual button:hover { border-color: var(--azul); color: var(--azul); }
+      /* ---------- status da chamada ---------- */
+      #card-status { padding: 0; overflow: hidden; }
+      .status-topo {
+        display: flex; align-items: center; gap: 8px;
+        padding: 9px 12px;
+        font-weight: 700; font-size: 12px;
+        background: var(--fundo); color: var(--suave);
+      }
+      .status-topo::before {
+        content: ""; width: 8px; height: 8px; border-radius: 50%;
+        background: currentColor; flex: none;
+      }
+      /* uma cor por estado da chamada */
+      [data-st="discando"]  .status-topo { background: var(--azul-fraco);    color: var(--azul-esc); }
+      [data-st="chamando"]  .status-topo { background: var(--ambar-fraco);   color: var(--ambar); }
+      [data-st="falando"]   .status-topo { background: var(--verde-fraco);   color: var(--verde); }
+      [data-st="caixa"]     .status-topo { background: var(--ambar-fraco);   color: var(--ambar); }
+      [data-st="nao-atendida"] .status-topo { background: var(--fundo);      color: var(--suave); }
+      [data-st="encerrada"] .status-topo { background: var(--fundo);         color: var(--suave); }
+      [data-st="falhou"]    .status-topo { background: var(--vermelho-fraco); color: var(--vermelho); }
 
-      #notice { padding: 9px 12px; font-size: 12px; display: none; }
-      #notice.error { background: #fdecec; color: #a11; display: block; }
-      #notice.info { background: #eef2fe; color: var(--azul); display: block; }
+      /* so os estados vivos pulsam */
+      [data-st="discando"] .status-topo::before,
+      [data-st="chamando"] .status-topo::before { animation: pulso 1.1s ease-in-out infinite; }
+      @keyframes pulso { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
-      .timer { font: 700 20px system-ui; color: var(--azul); }
-      .aviso { background: #fff8e6; border-left: 3px solid var(--amarelo); padding: 8px 10px; font-size: 12px; }
+      .status-corpo { padding: 12px; }
+      .numero { font: 700 19px/1.2 system-ui; letter-spacing: 0.01em; }
+      .timer { font: 700 19px/1.2 ui-monospace, "SF Mono", Consolas, monospace; color: var(--suave); }
+      #call-detalhe { margin-top: 6px; }
+      #call-mailing { margin-top: 8px; word-break: break-word; }
+
+      /* ---------- log ---------- */
+      details.log { margin-top: 2px; }
+      details.log summary {
+        cursor: pointer; font-size: 11px; font-weight: 600;
+        color: var(--suave); padding: 4px 2px;
+        list-style: none;
+      }
+      details.log summary::-webkit-details-marker { display: none; }
+      details.log summary::before { content: "\25B8 "; }
+      details.log[open] summary::before { content: "\25BE "; }
+      #log {
+        margin-top: 6px;
+        max-height: 190px; overflow-y: auto;
+        background: #fff; border: 1px solid var(--borda);
+        border-radius: 8px;
+        font: 11px/1.45 ui-monospace, "SF Mono", Consolas, monospace;
+      }
+      #log:empty::after {
+        content: "Sem eventos ainda.";
+        display: block; padding: 9px 10px;
+        color: var(--suave); font-family: system-ui;
+      }
+      .linha {
+        display: flex; gap: 7px;
+        padding: 5px 9px;
+        border-bottom: 1px solid var(--fundo);
+      }
+      .linha:last-child { border-bottom: 0; }
+      .linha .hora { color: #a3a9bd; flex: none; }
+      .linha .txt { min-width: 0; word-break: break-word; }
+      .linha .txt i { display: block; font-style: normal; color: var(--suave); }
+      .linha.erro  .txt { color: var(--vermelho); }
+      .linha.aviso .txt { color: var(--ambar); }
+      .linha.ok    .txt { color: var(--verde); }
+      .linha.evento .txt { color: var(--suave); }
     </style>
   </head>
 
   <body>
     <header>
-      <div>
+      <div class="avatar" id="hdr-ini">3C</div>
+      <div class="quem">
         <b id="hdr-nome">3C Plus</b>
         <small id="hdr-sub">nao conectado</small>
       </div>
-      <button id="btn-logout" class="ghost" style="display: none; color: #fff; border-color: #ffffff55">
-        Sair
-      </button>
+      <button id="btn-logout" class="icone" style="display: none">Sair</button>
     </header>
+
+    <div class="conexao" id="conexao" style="display: none">
+      <span id="st-ws" class="chip">WebSocket</span>
+      <span id="st-sip" class="chip">Ramal SIP</span>
+      <span id="st-modo" class="chip">-</span>
+    </div>
+
+    <div id="aviso-mic" style="display: none">
+      <span>Microfone não liberado — a chamada sai muda.</span>
+      <button id="btn-mic">Liberar</button>
+    </div>
 
     <div id="notice"></div>
 
     <main>
       <!-- 1. LOGIN -->
       <section id="sec-login" class="on">
-        <label for="in-domain">Dominio da empresa</label>
-        <input id="in-domain" placeholder="empresa" autocomplete="off" />
-        <span class="muted">so o subdominio, sem .3c.plus</span>
+        <div class="card">
+          <h2>Entrar</h2>
 
-        <label for="in-user">Ramal</label>
-        <input id="in-user" placeholder="1001" autocomplete="username" />
+          <label for="in-domain">Dominio da empresa</label>
+          <input id="in-domain" placeholder="empresa" autocomplete="off" spellcheck="false" />
+          <div class="muted" style="margin-top: 4px">so o subdominio, sem <b>.3c.plus</b></div>
 
-        <label for="in-pass">Senha</label>
-        <input id="in-pass" type="password" autocomplete="current-password" />
+          <label for="in-user">Ramal</label>
+          <input id="in-user" placeholder="1001" autocomplete="username" />
 
-        <button id="btn-login" class="wide">Entrar</button>
+          <label for="in-pass">Senha</label>
+          <input id="in-pass" type="password" autocomplete="current-password" />
+
+          <button id="btn-login" class="wide">Entrar</button>
+        </div>
       </section>
 
       <!-- 2. CAMPANHAS -->
       <section id="sec-campanhas">
         <div class="card">
-          <b>Conexao</b>
-          <div class="status">
-            <span id="st-ws" class="dot">WebSocket</span>
-            <span id="st-sip" class="dot">SIP</span>
-          </div>
+          <h2>Escolha uma campanha</h2>
+          <div id="lista-campanhas"></div>
         </div>
-        <b>Escolha uma campanha</b>
-        <div id="lista-campanhas" style="margin-top: 8px"></div>
       </section>
 
       <!-- 3. OPERACAO -->
       <section id="sec-operacao">
         <div class="card">
-          <div class="row" style="justify-content: space-between">
-            <div>
+          <div class="entre">
+            <div style="min-width: 0">
               <b id="op-campanha">-</b>
               <div class="muted" id="op-modo">modo dialer</div>
             </div>
-            <button id="btn-sair-campanha" class="ghost">Sair</button>
+            <button id="btn-sair-campanha" class="ghost">Trocar</button>
+          </div>
+        </div>
+
+        <!-- status da chamada -->
+        <div class="card" id="card-status" style="display: none">
+          <div class="status-topo" id="status-texto">-</div>
+          <div class="status-corpo">
+            <div class="entre">
+              <div style="min-width: 0">
+                <div class="numero" id="call-phone">-</div>
+                <div class="muted" id="call-id"></div>
+              </div>
+              <span class="timer" id="call-timer">00:00</span>
+            </div>
+            <div class="muted" id="call-detalhe"></div>
+            <div class="muted" id="call-mailing"></div>
+            <button id="btn-hangup" class="danger wide" style="display: none">Desligar</button>
           </div>
         </div>
 
         <!-- discador manual -->
         <div class="card" id="card-discador">
+          <h2>Discar</h2>
           <div class="row">
             <input id="in-phone" placeholder="(11) 98765-4321" inputmode="numeric" />
             <button id="btn-dial">Ligar</button>
@@ -154,37 +343,21 @@
           <button id="btn-manual" class="ghost wide">Ativar modo manual</button>
         </div>
 
-        <!-- chamada ativa -->
-        <div class="card" id="card-chamada" style="display: none">
-          <div class="row" style="justify-content: space-between">
-            <div>
-              <b id="call-phone">-</b>
-              <div class="muted" id="call-id"></div>
-            </div>
-            <span class="timer" id="call-timer">00:00</span>
-          </div>
-          <div id="call-mailing" class="muted" style="margin-top: 8px"></div>
-          <button id="btn-hangup" class="danger wide">Desligar</button>
-        </div>
-
-        <!-- qualificacao -->
-        <div class="card" id="card-qualificacao" style="display: none">
-          <div class="aviso">
-            Qualifique a chamada. Ate qualificar, o ramal fica travado em ACW e
-            nao consegue fazer a proxima ligacao.
-          </div>
-          <div class="qual" id="lista-qualificacoes"></div>
-        </div>
-
         <!-- intervalos -->
         <div class="card">
-          <b style="font-size: 13px">Intervalo</b>
-          <div class="row" style="margin-top: 8px">
+          <h2>Intervalo</h2>
+          <div class="row">
             <select id="sel-intervalo"><option value="">carregando...</option></select>
-            <button id="btn-break">Entrar</button>
+            <button id="btn-break" class="ghost">Entrar</button>
           </div>
         </div>
       </section>
+
+      <!-- log de eventos: aparece assim que existe sessao -->
+      <details class="log" id="log-box" style="display: none">
+        <summary>Eventos da 3C Plus</summary>
+        <div id="log"></div>
+      </details>
     </main>
 
     <script type="module" src="panel.js"></script>

@@ -27,10 +27,37 @@ async function req(path, method = 'GET', body) {
   const text = await res.text();
   const json = text ? safeParse(text) : null;
 
-  if (!res.ok) {
-    throw new Error(json?.message || `${res.status} - ${text.slice(0, 200)}`);
-  }
+  if (!res.ok) throw new Error(mensagemDeErro(json, res.status, text));
   return json;
+}
+
+/**
+ * A 3C Plus responde erro em dois formatos:
+ *   { message: "..." }                          - o que o SDK assumia
+ *   { status, title, detail, transaction_id }   - o que ela manda de verdade
+ *
+ * Sem tratar o segundo, o painel mostrava o JSON cru na cara do operador.
+ * "detail" vem primeiro: e a frase util ("Agente nao esta ocioso."), enquanto
+ * "title" e generico ("Erro de validacao").
+ */
+function mensagemDeErro(json, status, text) {
+  // Os erros por campo vem PRIMEIRO: quando existe { errors: {...} }, o detail
+  // costuma ser o generico "Erros de validacao foram encontrados ao processar
+  // sua requisicao" - que nao diz absolutamente nada sobre o que esta errado.
+  const erros = json?.errors;
+  if (erros && typeof erros === 'object') {
+    const lista = Object.entries(erros)
+      .flatMap(([campo, msgs]) =>
+        (Array.isArray(msgs) ? msgs : [msgs]).filter(Boolean).map((m) => `${campo}: ${m}`)
+      )
+      .slice(0, 3);
+    if (lista.length) return lista.join(' | ');
+  }
+
+  const frase = json?.detail || json?.message || json?.title;
+  if (frase) return String(frase);
+
+  return `${status} - ${String(text ?? '').slice(0, 200)}`;
 }
 
 function safeParse(text) {
@@ -74,15 +101,5 @@ export const api = {
   dial: (phone) => req('agent/manual_call/dial', 'POST', { phone: parseInt(phone, 10) }),
 
   // --- CallService ---
-  hangup: (callId) => req(`agent/call/${callId}/hangup`, 'POST'),
-
-  // O endpoint de qualificacao MUDA conforme o tipo da chamada.
-  qualify: (callId, qualificationId, callMode) =>
-    req(
-      callMode === 'dialer'
-        ? `agent/call/${callId}/qualify`
-        : `agent/manual_call/${callId}/qualify`,
-      'POST',
-      { qualification_id: qualificationId }
-    )
+  hangup: (callId) => req(`agent/call/${callId}/hangup`, 'POST')
 };
