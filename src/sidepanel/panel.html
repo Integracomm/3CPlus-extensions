@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>3C Plus</title>
+    <style>
+      :root {
+        --azul: #294ace;
+        --amarelo: #ffbb3a;
+        --fundo: #f9fafc;
+        --texto: #373753;
+        --borda: #e3e6ef;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 system-ui, sans-serif;
+        color: var(--texto);
+        background: var(--fundo);
+      }
+      header {
+        background: var(--azul);
+        color: #fff;
+        padding: 12px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      header b { font-size: 14px; }
+      header small { opacity: 0.85; display: block; font-size: 11px; }
+      main { padding: 14px; }
+      section { display: none; }
+      section.on { display: block; }
+
+      label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 4px; }
+      input, select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--borda);
+        border-radius: 6px;
+        font: inherit;
+      }
+      button {
+        font: 600 13px system-ui;
+        border: 0;
+        border-radius: 6px;
+        padding: 9px 14px;
+        cursor: pointer;
+        background: var(--azul);
+        color: #fff;
+      }
+      button:disabled { background: #a8adc4; cursor: default; }
+      button.ghost { background: transparent; color: var(--azul); border: 1px solid var(--borda); }
+      button.danger { background: #d33; }
+      button.wide { width: 100%; margin-top: 12px; }
+
+      .card {
+        background: #fff;
+        border: 1px solid var(--borda);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .muted { color: #7a7f9a; font-size: 12px; }
+      .status { display: flex; gap: 10px; font-size: 11px; margin-top: 6px; }
+      .dot::before { content: "\25CF"; color: #c33; margin-right: 4px; }
+      .dot.ok::before { color: #1a8f4a; }
+
+      .item {
+        padding: 9px 10px;
+        border: 1px solid var(--borda);
+        border-radius: 6px;
+        background: #fff;
+        margin-bottom: 6px;
+        cursor: pointer;
+      }
+      .item:hover { border-color: var(--azul); }
+
+      .qual { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .qual button { background: #fff; color: var(--texto); border: 1px solid var(--borda); font-weight: 500; }
+      .qual button:hover { border-color: var(--azul); color: var(--azul); }
+
+      #notice { padding: 9px 12px; font-size: 12px; display: none; }
+      #notice.error { background: #fdecec; color: #a11; display: block; }
+      #notice.info { background: #eef2fe; color: var(--azul); display: block; }
+
+      .timer { font: 700 20px system-ui; color: var(--azul); }
+      .aviso { background: #fff8e6; border-left: 3px solid var(--amarelo); padding: 8px 10px; font-size: 12px; }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div>
+        <b id="hdr-nome">3C Plus</b>
+        <small id="hdr-sub">nao conectado</small>
+      </div>
+      <button id="btn-logout" class="ghost" style="display: none; color: #fff; border-color: #ffffff55">
+        Sair
+      </button>
+    </header>
+
+    <div id="notice"></div>
+
+    <main>
+      <!-- 1. LOGIN -->
+      <section id="sec-login" class="on">
+        <label for="in-domain">Dominio da empresa</label>
+        <input id="in-domain" placeholder="empresa" autocomplete="off" />
+        <span class="muted">so o subdominio, sem .3c.plus</span>
+
+        <label for="in-user">Ramal</label>
+        <input id="in-user" placeholder="1001" autocomplete="username" />
+
+        <label for="in-pass">Senha</label>
+        <input id="in-pass" type="password" autocomplete="current-password" />
+
+        <button id="btn-login" class="wide">Entrar</button>
+      </section>
+
+      <!-- 2. CAMPANHAS -->
+      <section id="sec-campanhas">
+        <div class="card">
+          <b>Conexao</b>
+          <div class="status">
+            <span id="st-ws" class="dot">WebSocket</span>
+            <span id="st-sip" class="dot">SIP</span>
+          </div>
+        </div>
+        <b>Escolha uma campanha</b>
+        <div id="lista-campanhas" style="margin-top: 8px"></div>
+      </section>
+
+      <!-- 3. OPERACAO -->
+      <section id="sec-operacao">
+        <div class="card">
+          <div class="row" style="justify-content: space-between">
+            <div>
+              <b id="op-campanha">-</b>
+              <div class="muted" id="op-modo">modo dialer</div>
+            </div>
+            <button id="btn-sair-campanha" class="ghost">Sair</button>
+          </div>
+        </div>
+
+        <!-- discador manual -->
+        <div class="card" id="card-discador">
+          <div class="row">
+            <input id="in-phone" placeholder="(11) 98765-4321" inputmode="numeric" />
+            <button id="btn-dial">Ligar</button>
+          </div>
+          <button id="btn-manual" class="ghost wide">Ativar modo manual</button>
+        </div>
+
+        <!-- chamada ativa -->
+        <div class="card" id="card-chamada" style="display: none">
+          <div class="row" style="justify-content: space-between">
+            <div>
+              <b id="call-phone">-</b>
+              <div class="muted" id="call-id"></div>
+            </div>
+            <span class="timer" id="call-timer">00:00</span>
+          </div>
+          <div id="call-mailing" class="muted" style="margin-top: 8px"></div>
+          <button id="btn-hangup" class="danger wide">Desligar</button>
+        </div>
+
+        <!-- qualificacao -->
+        <div class="card" id="card-qualificacao" style="display: none">
+          <div class="aviso">
+            Qualifique a chamada. Ate qualificar, o ramal fica travado em ACW e
+            nao consegue fazer a proxima ligacao.
+          </div>
+          <div class="qual" id="lista-qualificacoes"></div>
+        </div>
+
+        <!-- intervalos -->
+        <div class="card">
+          <b style="font-size: 13px">Intervalo</b>
+          <div class="row" style="margin-top: 8px">
+            <select id="sel-intervalo"><option value="">carregando...</option></select>
+            <button id="btn-break">Entrar</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

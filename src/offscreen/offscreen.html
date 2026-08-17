@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>3C Plus - sessao</title>
+  </head>
+  <body>
+    <!--
+      Este documento nunca e visto pelo usuario. Ele existe por um motivo:
+      e o unico contexto do Manifest V3 que fica vivo indefinidamente e
+      aceita WebRTC. E aqui que moram o iframe SIP e o WebSocket.
+
+      allow="microphone" e obrigatorio: o iframe e de outra origem
+      (empresa.3c.plus) e sem isso o audio nao sobe.
+    -->
+    <iframe id="sip" allow="microphone; autoplay" referrerpolicy="no-referrer"></iframe>
+
+    <script src="../../vendor/socket.io.js"></script>
+    <script src="offscreen.js"></script>
+  </body>
+</html>

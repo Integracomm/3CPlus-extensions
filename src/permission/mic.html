@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>3C Plus - permitir microfone</title>
+    <style>
+      body {
+        font: 15px/1.6 system-ui, sans-serif;
+        color: #373753;
+        background: #f9fafc;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        margin: 0;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 32px 36px;
+        max-width: 460px;
+        box-shadow: 0 2px 16px rgb(0 0 0 / 8%);
+      }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      button {
+        background: #294ace;
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 20px;
+        font: 600 14px system-ui;
+        cursor: pointer;
+        margin-top: 8px;
+      }
+      #status { margin-top: 14px; font-size: 14px; }
+      .ok { color: #1a8f4a; }
+      .err { color: #c22; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Liberar o microfone</h1>
+      <p>
+        A conexao SIP da 3C Plus roda em segundo plano e nao consegue exibir o
+        pedido de permissao sozinha. Autorize uma unica vez aqui e o audio das
+        chamadas passa a funcionar.
+      </p>
+      <button id="grant">Permitir microfone</button>
+      <div id="status"></div>
+    </div>
+    <script src="mic.js"></script>
+  </body>
+</html>

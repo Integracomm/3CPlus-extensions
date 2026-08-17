@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "3C Plus Click-to-Call",
+  "version": "0.1.0",
+  "description": "Disca numeros de telefone direto da tela do seu CRM usando a plataforma 3C Plus.",
+
+  "permissions": ["storage", "offscreen", "sidePanel", "contextMenus"],
+  "host_permissions": ["https://*.3c.plus/*"],
+
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+
+  "side_panel": {
+    "default_path": "src/sidepanel/panel.html"
+  },
+
+  "action": {
+    "default_title": "3C Plus - abrir painel do operador"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://*.pipedrive.com/*"],
+      "js": ["src/content/detector.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
