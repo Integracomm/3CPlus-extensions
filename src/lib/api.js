@@ -68,6 +68,30 @@ function safeParse(text) {
   }
 }
 
+const caminhoQualify = (callId, callMode) =>
+  callMode === 'dialer'
+    ? `agent/call/${callId}/qualify`
+    : `agent/manual_call/${callId}/qualify`;
+
+/** A API valida o id como inteiro; o socket as vezes manda como string. */
+const comoNumero = (v) => {
+  const n = Number(v);
+  return v != null && `${v}`.trim() !== '' && Number.isFinite(n) ? n : v;
+};
+
+/**
+ * O corpo muda com o endpoint.
+ *
+ * No SDK, CallQualify (dialer) tem qualification_id E qualification_note;
+ * ManualCallQualify tem so o id. Mandar o corpo do manual para o endpoint de
+ * dialer da erro de validacao - com a mensagem generica "Erros de validacao
+ * foram encontrados ao processar sua requisicao".
+ */
+const corpoQualify = (qualificationId, callMode) =>
+  callMode === 'dialer'
+    ? { qualification_id: comoNumero(qualificationId), qualification_note: '' }
+    : { qualification_id: comoNumero(qualificationId) };
+
 export const api = {
   // --- AuthService ---
   async authenticate(domain, user, password) {
@@ -101,5 +125,21 @@ export const api = {
   dial: (phone) => req('agent/manual_call/dial', 'POST', { phone: parseInt(phone, 10) }),
 
   // --- CallService ---
-  hangup: (callId) => req(`agent/call/${callId}/hangup`, 'POST')
+  hangup: (callId) => req(`agent/call/${callId}/hangup`, 'POST'),
+
+  // O endpoint de qualificacao MUDA conforme o tipo da chamada.
+  qualify: (callId, qualificationId, callMode) =>
+    req(caminhoQualify(callId, callMode), 'POST', corpoQualify(qualificationId, callMode)),
+
+  /**
+   * O outro caminho, para a segunda tentativa.
+   *
+   * callMode so existe se o socket tiver informado. Quando nao informa,
+   * cairiamos sempre no endpoint manual e a chamada de dialer voltaria erro de
+   * validacao - melhor tentar o outro do que travar o ramal em ACW.
+   */
+  qualifyOutro: (callId, qualificationId, callMode) => {
+    const outro = callMode === 'dialer' ? 'manual' : 'dialer';
+    return req(caminhoQualify(callId, outro), 'POST', corpoQualify(qualificationId, outro));
+  }
 };

@@ -215,6 +215,24 @@
       #call-detalhe { margin-top: 6px; }
       #call-mailing { margin-top: 8px; word-break: break-word; }
 
+      /* ---------- qualificacao ---------- */
+      .aviso {
+        background: var(--ambar-fraco);
+        border-left: 3px solid var(--ambar);
+        border-radius: 4px;
+        padding: 8px 10px; font-size: 11.5px;
+        color: #7a4b00;
+      }
+      .qual { display: flex; flex-wrap: wrap; gap: 6px; }
+      .qual:empty { display: none; }
+      .qual button {
+        background: #fff; color: var(--texto);
+        border: 1px solid var(--borda); font-weight: 500;
+      }
+      .qual button:hover:not(:disabled) {
+        background: var(--azul-fraco); border-color: var(--azul); color: var(--azul);
+      }
+
       /* ---------- log ---------- */
       details.log { margin-top: 2px; }
       details.log summary {
@@ -294,6 +312,7 @@
 
           <button id="btn-login" class="wide">Entrar</button>
         </div>
+
       </section>
 
       <!-- 2. CAMPANHAS -->
@@ -343,6 +362,24 @@
           <button id="btn-manual" class="ghost wide">Ativar modo manual</button>
         </div>
 
+        <!-- qualificacao -->
+        <div class="card" id="card-qualificacao" style="display: none">
+          <div class="entre" style="margin-bottom: 9px">
+            <h2 style="margin: 0">Qualificar a chamada</h2>
+            <span class="timer" id="qual-tempo" style="font-size: 14px">00:00</span>
+          </div>
+
+          <div class="qual" id="lista-qualificacoes"></div>
+
+          <div id="qual-vazio" style="display: none">
+            <div class="aviso">
+              A 3C Plus ainda não enviou a lista de qualificações desta campanha.
+              Ela chega junto de uma chamada atendida e fica guardada a partir daí.
+            </div>
+            <button id="btn-qual-dispensar" class="ghost wide">Dispensar e continuar</button>
+          </div>
+        </div>
+
         <!-- intervalos -->
         <div class="card">
           <h2>Intervalo</h2>
@@ -352,6 +389,33 @@
           </div>
         </div>
       </section>
+
+      <!-- Integracao com o Pipedrive: fica FORA das sections, entao continua
+           acessivel depois do login - e onde o token e trocado ou removido. -->
+      <details class="log" id="pd-box">
+        <summary>Integração com o Pipedrive</summary>
+        <div class="card" style="margin-top: 6px">
+          <div class="entre" style="margin-bottom: 8px">
+            <b style="font-size: 12px">Registro de atividades</b>
+            <span class="chip" id="pd-chip">-</span>
+          </div>
+
+          <div class="muted" id="pd-ajuda">
+            Com um token, cada ligação qualificada vira uma atividade concluída
+            na ficha aberta. Use o <b>seu</b> token pessoal (Configurações →
+            Preferências pessoais → API), não o de um admin: a atividade fica no
+            seu nome.
+          </div>
+
+          <label for="in-pd-token">Token</label>
+          <input id="in-pd-token" type="password" autocomplete="off" />
+
+          <div class="row" style="margin-top: 10px">
+            <button id="btn-pd-salvar">Salvar</button>
+            <button id="btn-pd-remover" class="ghost" style="display: none">Remover</button>
+          </div>
+        </div>
+      </details>
 
       <!-- log de eventos: aparece assim que existe sessao -->
       <details class="log" id="log-box" style="display: none">

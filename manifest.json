@@ -5,7 +5,7 @@
   "description": "Disca numeros de telefone direto da tela do seu CRM usando a plataforma 3C Plus.",
 
   "permissions": ["storage", "offscreen", "contextMenus", "sidePanel"],
-  "host_permissions": ["https://*.3c.plus/*"],
+  "host_permissions": ["https://*.3c.plus/*", "https://api.pipedrive.com/*"],
 
   "background": {
     "service_worker": "src/background/service-worker.js",

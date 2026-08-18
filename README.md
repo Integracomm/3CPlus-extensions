@@ -107,7 +107,8 @@ botão de cada número e menu de contexto.
 | Content script | `src/content/detector.js` | acha telefones, injeta botões |
 | Service worker | `src/background/service-worker.js` | roteador + todas as chamadas REST |
 | Offscreen | `src/offscreen/offscreen.js` | iframe SIP + WebSocket (persistente) |
-| Painel (side panel) | `src/panel/panel.js` | login, campanha, status da chamada |
+| Painel (side panel) | `src/panel/panel.js` | login, campanha, status, qualificação |
+| Pipedrive | `src/lib/pipedrive.js` + `src/lib/atividade.js` | atividade da ligação no CRM |
 
 O offscreen document é o único contexto MV3 que fica vivo indefinidamente —
 por isso o SIP e o socket moram nele. O service worker hiberna aos ~30s
@@ -184,6 +185,14 @@ Duas garantias que os testes fixam:
 npm test
 ```
 
+Duas suítes: **`ciclo-chamada.mjs`** sobe o service worker com um `chrome`
+falso, e **`painel.mjs`** sobe a UI com um DOM falso e empurra estados.
+
+A segunda existe porque os dois bugs mais recentes foram **no painel**, e o
+teste de estado não os pegava: o estado estava certo, a tela é que não. São eles
+o cronômetro travado em `00:00` e os botões de qualificação mortos a partir da
+segunda ligação.
+
 `test/ciclo-chamada.mjs` sobe o service worker com um `chrome` falso e replica
 sequências de eventos do socket, conferindo o estado resultante. Cada cenário é
 um bug que já aconteceu de verdade — os de número 2, 3 e 4 rodam o ciclo inteiro
@@ -205,9 +214,27 @@ com **apenas uma** das fontes disponível:
 14. discagem nova reabre o ciclo depois de um desfecho
 15. **operador desliga pela extensão** — o socket não avisa nada
 16. desligar sem chamada ativa é recusado
+17. lista de qualificações chega durante a chamada e vale no fim
+18. **próxima chamada não recebe a lista — e ainda assim qualifica** (cache)
+19. qualificar libera a próxima ligação (endpoint e corpo do modo manual)
+20. chamada de dialer usa o outro endpoint **e manda `qualification_note`**
+21. fora da janela de ACW: limpa o card em vez de deixar botão morto
+22. discar com qualificação pendente é barrado
+23. ramal ocioso **não** some com a pendência
+24. dispensar limpa sem chamar a API
 
 Cobre a **máquina de estados**, não a API: `fetch` é stub. O que ele garante é
 que, dada uma sequência de eventos, o estado resultante é o certo.
+
+E o `painel.mjs`, o que o operador veria:
+
+- **P1** cronômetro sem início mostra `--:--`, não um `00:00` que parece travado
+- **P2** botões de qualificação da **segunda** ligação em diante ficam clicáveis
+- **P3** redesenho durante a mesma chamada não apaga o clique em andamento
+- **P4** falha ao qualificar reabilita os botões e mostra o erro
+- **P5** sem lista, aparece a explicação e o escape
+- **P6** o discador some enquanto há qualificação pendente
+- **P7** token do Pipedrive: salva, sobrevive a reabrir, troca e remove
 
 ## Status da chamada
 
@@ -233,6 +260,114 @@ payload do fim da chamada — `CAIXA_POSTAL_RE` em `service-worker.js`. A lista
 cobre `voicemail`, `caixa postal`, `mailbox`, `answering machine` e
 `secretária eletrônica`; se a sua operadora usa outro termo, ele aparece cru no
 log de eventos e é só acrescentar na regex.
+
+## Qualificação
+
+**Requisito: toda chamada encerrada tem que dar para qualificar.**
+
+O problema é que a lista de qualificações só chega pelo socket, em
+`call-was-connected` — *durante* a chamada — e nem sempre chega. Depender disso
+a cada ligação não atende "sempre".
+
+A saída: **a lista é configuração da campanha, não da chamada.** Não muda entre
+uma ligação e outra. Então ela é gravada em `chrome.storage.local` sob
+`quals:<campaignId>` na primeira vez que aparece, e serve para todas as
+próximas — inclusive depois de fechar o Chrome.
+
+```
+socket manda a lista uma vez  →  cache da campanha  →  toda chamada seguinte
+```
+
+Ao entrar na campanha o cache é pré-carregado, então a primeira chamada do turno
+já pode qualificar.
+
+### O envio
+
+| Modo | Endpoint | Corpo |
+|---|---|---|
+| manual | `agent/manual_call/{id}/qualify` | `qualification_id` |
+| dialer | `agent/call/{id}/qualify` | `qualification_id` **+ `qualification_note`** |
+
+O `callId` vem da resposta do `/dial`, nunca do socket. Se o primeiro endpoint
+recusar, o outro é tentado — `callMode` nem sempre chega.
+
+### A janela de ACW
+
+Qualificar só funciona enquanto a chamada está ativa ou em ACW. Duas decisões:
+
+- **O ramal ficar ocioso não some com o card.** `lastCallId` é preservado
+  enquanto houver pendência: melhor tentar e ouvir um não do que esconder o
+  card e nunca deixar qualificar.
+- **Quando a API recusa por prazo**, o card é limpo com uma mensagem clara — em
+  vez de deixar um botão que só sabe dar erro.
+
+O discador some enquanto há pendência: discar ali só traria o 422 "Agente não
+está ocioso".
+
+### Se a lista nunca chegar
+
+O card aparece mesmo assim, explicando, com um botão *Dispensar e continuar*.
+Dispensar limpa **só o estado local** — não qualifica nada na 3C Plus, e o
+ramal pode seguir em ACW lá. O log registra em qual evento a lista chegou
+(`Qualificacoes recebidas em "..."`) ou avisa que não há cache.
+
+## Atividade no Pipedrive
+
+Cada ligação qualificada vira uma **atividade concluída** na ficha que estava
+aberta quando o operador clicou em Ligar.
+
+O elo é capturado **na hora do clique**, dentro da página: a 3C Plus não sabe de
+qual negócio veio uma chamada manual — click2call sai com `mailing_data: {}`.
+Então o `detector.js` lê `/deal/26280` da URL e manda junto do `DIAL`.
+
+```
+clique na ficha → alvo {tipo, id} viaja com a chamada
+   → qualificação → POST /v1/activities vinculado àquela ficha
+```
+
+### O token é pessoal, e se configura uma vez
+
+Fica em `chrome.storage.local`, na máquina do operador, e é **o token dele** —
+não o de um admin. Assim a atividade nasce atribuída à pessoa certa no CRM e
+ninguém carrega credencial de outro. Sem token, nada acontece: a extensão segue
+funcionando e não registra nada.
+
+Mora em **Integração com o Pipedrive**, no rodapé do painel — fora das
+`<section>`, então continua acessível depois do login. Antes ficava na tela de
+entrada e sumia junto com ela: não dava para editar sem deslogar.
+
+Configurado uma vez, sobrevive a reabrir o painel e a fechar o Chrome. Para
+trocar, digite outro; para desligar, **Remover**.
+
+**O token não volta para a tela.** O campo fica vazio e o placeholder avisa que
+já existe um salvo — reecoar o segredo no DOM não ajudaria a editar, já que
+digitar outro é o que troca.
+
+É validado contra `GET /v1/users/me` antes de salvar: token errado só
+apareceria no fim do turno, quando as atividades não estivessem lá.
+
+### Regras que valem saber
+
+- **A atividade nunca derruba a qualificação.** Se o Pipedrive recusar, a
+  chamada já está qualificada na 3C Plus e o ramal já está livre — o erro vira
+  linha no log e um aviso, não um bloqueio.
+- **Sem ficha aberta, não lança.** Ligação pelo funil ou pelo menu de contexto
+  não gera atividade: atividade sem vínculo é lixo no CRM.
+- **A marca de deduplicação é texto visível**, `ID da chamada na 3C: <id>`, e
+  não comentário HTML. Essa é a cicatriz do `pipe-to-3cplus`: o Pipedrive
+  sanitiza o HTML da nota e descarta comentários, a marca sumia no salvamento e
+  todo reenvio virava atividade duplicada — medido em produção.
+- **`duration` é `HH:MM`**, então 2min05 vira `00:02`. A nota usa formato
+  legível (`2 min 5 s`) porque `00:02` seria lido como dois segundos.
+
+### O que não dá para replicar aqui
+
+Duas linhas que a versão do `pipe-to-3cplus` tem e esta não:
+
+- **link da gravação** — sai do relatório da 3C Plus, sem endpoint no SDK;
+- **dados do lead** — click2call não preenche `mailing_data`.
+
+Não é limitação da implementação: é o preço da chamada manual.
 
 ## Log de eventos
 

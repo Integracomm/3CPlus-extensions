@@ -10,6 +10,8 @@
 // modulo, so em chrome.storage.session.
 
 import { api } from '../lib/api.js';
+import { pipedrive, campoDoAlvo } from '../lib/pipedrive.js';
+import { montarAtividade, jaLancada } from '../lib/atividade.js';
 import { Session, Prefs, Windows } from '../lib/storage.js';
 import { EV, AGENT_STATUS } from '../lib/events.js';
 
@@ -202,6 +204,61 @@ function resumo(data) {
 }
 
 /**
+ * Procura a lista de qualificacoes dentro do payload.
+ *
+ * O lugar muda conforme o evento (data.qualifications, data.qualification.
+ * qualifications, dentro de data.call...), entao em vez de fixar um caminho
+ * procuramos um array de {id, name} sob chaves de qualificacao.
+ *
+ * Basta id + name por item. Exigir que TODOS batessem descartava a lista
+ * inteira por causa de um item fora do formato.
+ */
+function qualificacoesDe(data, nivel = 0) {
+  if (!data || typeof data !== 'object' || nivel > 4) return null;
+
+  if (Array.isArray(data)) {
+    const validos = data.filter((q) => q && q.id != null && typeof q.name === 'string');
+    return validos.length ? validos : null;
+  }
+
+  for (const k of ['qualifications', 'qualification', 'qualification_list', 'call', 'data']) {
+    if (k in data) {
+      const achado = qualificacoesDe(data[k], nivel + 1);
+      if (achado) return achado;
+    }
+  }
+  for (const [k, v] of Object.entries(data)) {
+    if (/qualifica/i.test(k)) {
+      const achado = qualificacoesDe(v, nivel + 1);
+      if (achado) return achado;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Cache das qualificacoes, por campanha
+//
+// A exigencia e "sempre que encerrar uma ligacao eu consigo qualificar", e a
+// lista so chega pelo socket - em call-was-connected, DURANTE a chamada, e nem
+// sempre. Depender disso a cada ligacao nao atende "sempre".
+//
+// Mas a lista e configuracao da CAMPANHA, nao da chamada: nao muda entre uma
+// ligacao e outra. Entao recebida uma vez, fica gravada em storage.local e
+// serve para todas as proximas - inclusive depois de fechar o Chrome.
+// ---------------------------------------------------------------------------
+
+const chaveQuals = (campaignId) => `quals:${campaignId}`;
+
+async function guardarQualificacoes(campaignId, lista) {
+  if (!campaignId || !lista?.length) return;
+  await Prefs.set(chaveQuals(campaignId), lista);
+}
+
+const qualificacoesDaCampanha = (campaignId) =>
+  campaignId ? Prefs.get(chaveQuals(campaignId), null) : null;
+
+/**
  * Estado do agente do lado da 3C Plus (IDLE, ACW, ON_CALL...).
  *
  * E o que decide se a discagem passa: entrar em modo manual exige o agente
@@ -292,6 +349,60 @@ async function esperarSip(ms = 12000) {
 }
 
 // ---------------------------------------------------------------------------
+// Atividade no Pipedrive
+//
+// Roda DEPOIS da qualificacao, que e quando a ligacao esta completa: so ai
+// existem desfecho, duracao e qualificacao para escrever na nota.
+//
+// Nunca derruba a qualificacao. Se o Pipedrive recusar, a chamada ja foi
+// qualificada na 3C Plus e o ramal ja esta livre - o erro vira linha no log,
+// nao um erro na cara do operador no meio do turno.
+// ---------------------------------------------------------------------------
+
+async function lancarAtividade(qualificationName) {
+  const token = await Prefs.get('pipedriveToken');
+  if (!token) return { pulou: 'sem_token' };
+
+  const st = await Session.get();
+  const alvo = st?.alvo;
+  const callId = st?.lastCallId ?? st?.currentCallId;
+
+  // Sem ficha aberta nao ha onde lancar. Atividade solta no CRM e lixo, entao
+  // a ligacao pelo funil ou pelo menu de contexto nao gera atividade.
+  if (!alvo?.id || !campoDoAlvo(alvo.tipo)) return { pulou: 'sem_ficha' };
+  if (!callId) return { pulou: 'sem_call_id' };
+
+  const chamada = {
+    callId,
+    phone: st.callPhone ?? st.dialingTo,
+    result: st.callStatus,
+    startedAt: st.callTalkStartedAt ?? st.callStartedAt,
+    endedAt: st.callEndedAt,
+    talkSeconds: st.callTalkSeconds ?? 0,
+    campaignName: st.campaignName,
+    agentName: st.userName,
+    qualificationName
+  };
+
+  // Deduplicacao: o operador pode qualificar duas vezes se a primeira parecer
+  // ter falhado. A marca na nota e o que reconhece o reenvio.
+  const antigas = await pipedrive.atividadesDe(token, alvo).catch(() => []);
+  if (jaLancada(antigas, callId)) return { pulou: 'ja_lancada' };
+
+  const personId =
+    alvo.tipo === 'deal' ? await pipedrive.pessoaDoNegocio(token, alvo.id).catch(() => null) : null;
+
+  const atividade = montarAtividade(chamada, {
+    campoAlvo: campoDoAlvo(alvo.tipo),
+    alvoId: alvo.id,
+    personId
+  });
+
+  const res = await pipedrive.criarAtividade(token, atividade);
+  return { id: res?.data?.id ?? null };
+}
+
+// ---------------------------------------------------------------------------
 // Acoes
 // ---------------------------------------------------------------------------
 
@@ -300,7 +411,7 @@ async function esperarSip(ms = 12000) {
  * em modo manual, e o login na campanha entra em modo dialer. Entao entramos
  * no modo manual sob demanda.
  */
-async function dial(phone, sender) {
+async function dial(phone, sender, alvo) {
   const st = await Session.get();
 
   // Faltando sessao ou campanha, o operador precisa do painel de qualquer
@@ -316,6 +427,12 @@ async function dial(phone, sender) {
   }
 
   if (st.currentCallId) throw new Error('Ja existe uma chamada em andamento.');
+
+  // A 3C Plus recusaria com 422 "Agente nao esta ocioso" - o ramal fica em ACW
+  // ate qualificar. Barrar aqui diz o que fazer, em vez de um erro de API.
+  if (st.pendingQualification) {
+    throw new Error('Qualifique a chamada anterior antes de discar.');
+  }
 
   if (!st.manualMode) {
     try {
@@ -344,8 +461,12 @@ async function dial(phone, sender) {
     callPhone: res?.call?.number ?? res?.data?.call?.number ?? phone,
     currentCallId: callId,
     lastCallId: callId,
+    // De qual ficha do CRM saiu a ligacao. E a unica chance de saber: a 3C
+    // Plus nao guarda isso em chamada manual, e depois nao ha como descobrir.
+    alvo: alvo ?? null,
     // Chamada nova: nada da anterior sobrevive.
-    callEndedAt: null
+    callEndedAt: null,
+    atividadeId: null
   });
 
   await setStatus('discando', 'Discando...');
@@ -393,6 +514,21 @@ const handlers = {
     if (!st?.token || !st?.domain) return {};
     await logar('info', 'Offscreen pediu a credencial ao carregar');
     return { token: st.token, domain: st.domain };
+  },
+
+  /**
+   * Confere o token contra a API antes de guardar.
+   *
+   * Token errado so apareceria no fim do turno, quando as atividades nao
+   * estivessem la - e as ligacoes ja teriam passado.
+   */
+  async PIPEDRIVE_TOKEN({ token }) {
+    const eu = await pipedrive.quemSou(token);
+    const nome = eu?.data?.name ?? 'usuario do Pipedrive';
+    await Prefs.set('pipedriveToken', token);
+    await Prefs.set('pipedriveUser', nome);
+    await logar('ok', `Pipedrive conectado como ${nome}`);
+    return nome;
   },
 
   async UI_STATE() {
@@ -497,6 +633,16 @@ const handlers = {
     await Session.set({ campaignId: id, campaignName: name, manualMode: false });
     await logar('ok', `Entrou na campanha ${name}`);
 
+    // Carrega a lista que ja foi vista nesta campanha (sobrevive ao Chrome
+    // fechar), para a primeira chamada do turno ja poder qualificar.
+    const guardadas = await qualificacoesDaCampanha(id);
+    if (guardadas?.length) {
+      await Session.set({ qualifications: guardadas });
+      await logar('info', `${guardadas.length} qualificacoes desta campanha em cache`);
+    } else {
+      await logar('aviso', 'Sem qualificacoes em cache - esperando o socket mandar');
+    }
+
     return Session.get();
   },
 
@@ -521,7 +667,7 @@ const handlers = {
     return Session.set({ manualMode: true });
   },
 
-  DIAL: ({ phone }, sender) => dial(phone, sender),
+  DIAL: ({ phone, alvo }, sender) => dial(phone, sender, alvo),
 
   async HANGUP() {
     const st = await Session.get();
@@ -541,6 +687,64 @@ const handlers = {
     await encerrarChamada('encerrada', 'Chamada encerrada');
     await pushState();
     return { ok: true };
+  },
+
+  /**
+   * Envia a qualificacao da ultima chamada.
+   *
+   * Duas incertezas tratadas aqui: o endpoint depende do tipo da chamada (e o
+   * tipo nem sempre chega pelo socket), e a janela de ACW tem prazo.
+   */
+  async QUALIFY({ qualificationId }) {
+    const st = await Session.get();
+    const callId = st?.currentCallId ?? st?.lastCallId;
+    if (!callId) throw new Error('Nenhuma chamada para qualificar.');
+
+    const modo = st.callMode ?? 'desconhecido';
+    await logar('info', `Qualificando ${callId} com ${qualificationId}`, `modo ${modo}`);
+
+    try {
+      await api.qualify(callId, qualificationId, st.callMode);
+    } catch (e) {
+      if (foraDaJanela(e?.message)) return recusaPorJanela(e?.message);
+
+      // Endpoint errado e a outra causa provavel: tenta o par antes de desistir.
+      await logar('aviso', 'Recusada, tentando o outro endpoint', e?.message);
+      try {
+        await api.qualifyOutro(callId, qualificationId, st.callMode);
+        await logar('ok', 'Qualificada pelo endpoint alternativo');
+      } catch (e2) {
+        if (foraDaJanela(e2?.message)) return recusaPorJanela(e2?.message);
+        throw e2;
+      }
+    }
+
+    await logar('ok', 'Chamada qualificada');
+
+    // A atividade vem DEPOIS e nunca derruba o que ja deu certo: a chamada ja
+    // esta qualificada na 3C Plus e o ramal ja esta livre.
+    const nome = st.qualifications?.find((q) => q.id === qualificationId)?.name ?? null;
+    try {
+      const r = await lancarAtividade(nome);
+      if (r.id) await logar('ok', `Atividade ${r.id} criada no Pipedrive`);
+      else await logar('info', `Atividade nao criada: ${r.pulou}`);
+    } catch (e) {
+      await logar('erro', 'Pipedrive recusou a atividade', e?.message);
+      notifyUI('error', `Chamada qualificada, mas a atividade falhou: ${e?.message}`);
+    }
+
+    await limparQualificacao();
+    return Session.get();
+  },
+
+  /**
+   * Saida quando a lista nao veio, ou veio errada: o operador dispensa e segue.
+   * So limpa o estado local - nao qualifica nada na 3C Plus.
+   */
+  async DISMISS_QUAL() {
+    await limparQualificacao();
+    await logar('aviso', 'Qualificacao dispensada pelo operador');
+    return Session.get();
   },
 
   async INTERVALS() {
@@ -659,14 +863,54 @@ const chamadaEncerrada = (st) => Boolean(st?.callEndedAt) || TERMINAIS.includes(
 
 async function encerrarChamada(desfecho, texto, detalhe = null) {
   const st = (await Session.get()) ?? {};
+
+  // A lista que vale: a que o socket mandou nesta chamada, senao a da campanha.
+  // E o que sustenta "sempre que encerrar eu consigo qualificar".
+  const lista = st.qualifications?.length
+    ? st.qualifications
+    : ((await qualificacoesDaCampanha(st.campaignId)) ?? []);
+
+  const fim = st.callEndedAt ?? Date.now();
+
   await Session.set({
     currentCallId: null,
+    // callStartedAt zera para o cronometro parar, mas a duracao ainda e
+    // necessaria depois: a atividade do Pipedrive so e montada na
+    // qualificacao, e ate la o inicio ja teria se perdido.
     callStartedAt: null,
+    callTalkStartedAt: st.callTalkStartedAt ?? st.callStartedAt ?? null,
+    callTalkSeconds: st.callStartedAt ? Math.max(0, Math.round((fim - st.callStartedAt) / 1000)) : 0,
     dialingTo: null,
-    callEndedAt: st.callEndedAt ?? Date.now()
+    callEndedAt: fim,
+    qualifications: lista,
+    // Toda chamada que teve id entra em pendencia. O card aparece mesmo sem
+    // lista - explicando por que - em vez de sumir sem o operador entender.
+    pendingQualification: Boolean(st.lastCallId)
   });
+
   if (!DESFECHO_ESPECIFICO.includes(st.callStatus)) await setStatus(desfecho, texto, detalhe);
 }
+
+// "chamada nao esta mais em estado valido para ser qualificada, precisa estar
+// ativa ou em estado acw" - a janela fechou e nenhum endpoint aceita mais.
+const foraDaJanela = (msg) =>
+  /estado v[aá]lido|em estado acw|precisa estar ativa|no longer.*valid/i.test(msg ?? '');
+
+/** Recusa por prazo: limpa o card em vez de deixar botao que so da erro. */
+async function recusaPorJanela(msg) {
+  await limparQualificacao();
+  await logar('aviso', 'Chamada saiu do ACW antes da qualificacao', msg);
+  throw new Error('Essa chamada saiu do ACW e nao aceita mais qualificacao. Liberei o painel.');
+}
+
+/** Fecha a pendencia: qualificada, dispensada, ou fora da janela. */
+const limparQualificacao = () =>
+  Session.set({
+    pendingQualification: false,
+    lastCallId: null,
+    callEndedAt: null,
+    mailing: null
+  });
 
 /**
  * Ramal livre: nada em curso.
@@ -684,12 +928,16 @@ async function liberarRamal() {
     await encerrarChamada('nao-atendida', 'Nao atendida');
   }
 
+  // Qualificacao pendente sobrevive ao ramal ficar ocioso: lastCallId e
+  // preciso para o POST. Quem decide se ainda da tempo e a API - se recusar
+  // por estar fora do ACW, o handler QUALIFY limpa. Melhor tentar e ouvir um
+  // nao do que esconder o card e nunca deixar qualificar.
+  const st2 = (await Session.get()) ?? {};
   await Session.set({
     currentCallId: null,
-    lastCallId: null,
     callStartedAt: null,
     dialingTo: null,
-    mailing: null
+    ...(st2.pendingQualification ? {} : { lastCallId: null, mailing: null })
   });
 }
 
@@ -738,6 +986,17 @@ async function onSocketEvent(event, data) {
   if (id != null) {
     const st = await Session.get();
     if (!st?.lastCallId) await Session.set({ lastCallId: id });
+  }
+
+  // A lista de qualificacoes e procurada em TODO evento, nao so nos de chamada:
+  // o SDK a le em call-was-connected, manual-call-was-answered e
+  // call-history-was-created, e nada garante que sejam os unicos.
+  const quals = qualificacoesDe(data);
+  if (quals?.length) {
+    const st = await Session.get();
+    await Session.set({ qualifications: quals });
+    await guardarQualificacoes(st?.campaignId, quals);
+    await logar('ok', `Qualificacoes recebidas em "${event}"`, `${quals.length} itens`);
   }
 
   switch (event) {

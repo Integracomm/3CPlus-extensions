@@ -86,6 +86,58 @@ function render(state) {
   $('btn-break').textContent = state.onBreak ? 'Sair do intervalo' : 'Entrar';
 
   renderStatus(state);
+  renderQualificacao(state);
+}
+
+/**
+ * Card de qualificacao. Aparece sempre que uma chamada encerrou e ainda nao foi
+ * qualificada - com a lista, se houver, ou explicando por que nao ha.
+ */
+function renderQualificacao(state) {
+  const precisa = Boolean(state.pendingQualification);
+  $('card-qualificacao').style.display = precisa ? '' : 'none';
+  if (!precisa) return;
+
+  const quals = state.qualifications ?? [];
+  $('qual-vazio').style.display = quals.length ? 'none' : '';
+
+  // Relogio do ACW: a janela tem prazo, e passar dele invalida a chamada.
+  if (state.callEndedAt) startTimer(state.callEndedAt, 'qual-tempo');
+
+  const box = $('lista-qualificacoes');
+
+  // A marca inclui a CHAMADA, nao so os ids das qualificacoes.
+  //
+  // Com os ids sozinhos ela era identica em toda ligacao da mesma campanha:
+  // depois da primeira qualificacao os botoes ficavam desabilitados ("Enviando
+  // ..."), o card escondia, e na ligacao seguinte a marca batia - entao nada
+  // era redesenhado e o operador reencontrava os botoes todos mortos.
+  //
+  // Com lastCallId junto, cada chamada ganha botoes novos, e os redesenhos
+  // durante a MESMA chamada continuam sendo evitados (que e o ponto: nao
+  // apagar o clique em andamento a cada STATE do service worker).
+  const marca = `${state.lastCallId ?? '-'}:${quals.map((q) => q.id).join(',')}`;
+  if (box.dataset.marca === marca) return;
+  box.dataset.marca = marca;
+
+  box.innerHTML = '';
+  for (const q of quals) {
+    const b = document.createElement('button');
+    b.textContent = q.name;
+    b.onclick = async () => {
+      box.querySelectorAll('button').forEach((x) => (x.disabled = true));
+      b.textContent = 'Enviando...';
+      try {
+        render(await call('QUALIFY', { qualificationId: q.id }));
+        notice('Chamada qualificada.');
+      } catch (e) {
+        notice(e.message, 'error');
+        b.textContent = q.name;
+        box.querySelectorAll('button').forEach((x) => (x.disabled = false));
+      }
+    };
+    box.appendChild(b);
+  }
 }
 
 /**
@@ -101,7 +153,10 @@ function renderStatus(state) {
   const temStatus = Boolean(state.callStatusText);
 
   $('card-status').style.display = temStatus || emChamada ? '' : 'none';
-  $('card-discador').style.display = emChamada || discando ? 'none' : '';
+  // O discador some enquanto ha qualificacao pendente: discar ali so traria o
+  // 422 "Agente nao esta ocioso".
+  $('card-discador').style.display =
+    emChamada || discando || state.pendingQualification ? 'none' : '';
   if (!temStatus && !emChamada) {
     stopTimer();
     return;
@@ -282,6 +337,58 @@ for (const id of ['in-domain', 'in-user', 'in-pass']) {
 }
 
 // ---------------------------------------------------------------------------
+// Token do Pipedrive
+//
+// Fica so nesta maquina (chrome.storage.local) e e conferido contra a API antes
+// de salvar - token errado descoberto no fim do turno, quando as atividades nao
+// apareceram, seria bem pior.
+// ---------------------------------------------------------------------------
+
+async function renderPipedrive() {
+  const guardado = await chrome.storage.local
+    .get(['pipedriveToken', 'pipedriveUser'])
+    .catch(() => ({}));
+  const temToken = Boolean(guardado?.pipedriveToken);
+
+  // O token NAO volta para a tela. Sai uma vez do teclado e fica no storage:
+  // reecoar o segredo no DOM nao ajuda a editar - digitar outro ja troca.
+  $('in-pd-token').value = '';
+  $('in-pd-token').placeholder = temToken
+    ? 'token salvo — digite outro para trocar'
+    : 'cole aqui o seu token do Pipedrive';
+
+  $('pd-chip').textContent = temToken
+    ? (guardado.pipedriveUser ?? 'conectado')
+    : 'não configurado';
+  $('pd-chip').className = `chip ${temToken ? 'ok' : ''}`;
+  $('btn-pd-remover').style.display = temToken ? '' : 'none';
+  $('btn-pd-salvar').textContent = temToken ? 'Trocar' : 'Salvar';
+}
+
+$('btn-pd-salvar').onclick = async () => {
+  const btn = $('btn-pd-salvar');
+  const token = $('in-pd-token').value.trim();
+  if (!token) return notice('Cole o token antes de salvar.', 'error');
+
+  btn.disabled = true;
+  try {
+    const nome = await call('PIPEDRIVE_TOKEN', { token });
+    await renderPipedrive();
+    notice(`Token válido. Atividades sairão como ${nome}.`);
+  } catch (e) {
+    notice(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+$('btn-pd-remover').onclick = async () => {
+  await chrome.storage.local.remove(['pipedriveToken', 'pipedriveUser']);
+  await renderPipedrive();
+  notice('Token removido. As ligações não vão mais gerar atividade.');
+};
+
+// ---------------------------------------------------------------------------
 // Microfone
 //
 // Sem permissao a chamada acontece e ninguem ouve nada - e em silencio, sem
@@ -388,6 +495,15 @@ $('in-phone').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('btn-dial').click();
 });
 
+$('btn-qual-dispensar').onclick = async () => {
+  try {
+    render(await call('DISMISS_QUAL'));
+    notice('Dispensada. Isso não qualifica na 3C Plus — o ramal pode seguir em ACW lá.');
+  } catch (e) {
+    notice(e.message, 'error');
+  }
+};
+
 $('btn-hangup').onclick = async () => {
   try {
     await call('HANGUP');
@@ -409,6 +525,10 @@ $('btn-break').onclick = async () => {
   }
 };
 
+// Exportado so para o teste (test/painel.mjs) conseguir simular "reabriu o
+// painel" sem recarregar o modulo. No navegador ninguem importa este arquivo.
+export { renderPipedrive };
+
 // ---------------------------------------------------------------------------
 // Mensagens do service worker
 // ---------------------------------------------------------------------------
@@ -427,6 +547,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   const state = await call('STATE').catch(() => null);
   render(state);
   await renderMic();
+  await renderPipedrive();
 
   if (state?.token) {
     if (state.campaignId) await carregarIntervalos();

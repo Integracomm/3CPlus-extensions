@@ -63,6 +63,21 @@
 
   const emFicha = () => FICHA_RE.test(location.pathname) || FICHA_LEAD_RE.test(location.pathname);
 
+  /**
+   * Qual ficha do CRM esta aberta, para a ligacao virar atividade nela.
+   *
+   * Sai da URL porque e o unico lugar confiavel: e aqui, dentro da pagina, que
+   * essa informacao existe - a 3C Plus nao sabe de qual negocio veio uma
+   * chamada manual (click2call sai com mailing_data vazio).
+   *
+   * Lead fica de fora: o id dele e uuid, e a API de atividades quer negocio,
+   * pessoa ou organizacao.
+   */
+  function fichaAberta() {
+    const m = /^\/(deal|person|organization)\/(\d+)/i.exec(location.pathname);
+    return m ? { tipo: m[1].toLowerCase(), id: Number(m[2]) } : null;
+  }
+
   /** "(63) 99122-1959" | "+55 63 99122-1959" -> "63991221959" */
   function normalize(raw) {
     const d = String(raw ?? '').replace(/\D/g, '');
@@ -295,7 +310,7 @@
     }
 
     fabAcao.textContent = 'Discando...';
-    const res = await pedir('DIAL', { phone });
+    const res = await pedir('DIAL', { phone, alvo: fichaAberta() });
 
     fabAcao.textContent = res?.ok ? 'Chamando' : 'Erro';
     // O service worker ja abre o painel quando falta sessao ou campanha - aqui
@@ -406,7 +421,7 @@
       btn.dataset.busy = '1';
       btn.textContent = '...';
 
-      const res = await pedir('DIAL', { phone });
+      const res = await pedir('DIAL', { phone, alvo: fichaAberta() });
 
       btn.textContent = res?.ok ? 'Chamando' : 'Erro';
       if (!res?.ok) {
